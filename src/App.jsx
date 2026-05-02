@@ -3,8 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './components/AppShell';
-import { firebaseReady } from './services/firebase';
-import { FirebaseSetupNotice } from './components/FirebaseSetupNotice';
+const LandingPage = lazy(() => import('./pages/LandingPage').then((module) => ({ default: module.LandingPage })));
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/RegisterPage').then((module) => ({ default: module.RegisterPage })));
@@ -18,11 +17,7 @@ const PublicApplyPage = lazy(() => import('./pages/PublicApplyPage').then((modul
 const QueueDisplayPage = lazy(() => import('./pages/QueueDisplayPage').then((module) => ({ default: module.QueueDisplayPage })));
 
 export default function App() {
-  const { user, loading } = useAuth();
-
-  if (!firebaseReady) {
-    return <FirebaseSetupNotice />;
-  }
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -43,7 +38,7 @@ export default function App() {
       }
     >
       <Routes>
-        <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/apply/:publicSlug" element={<PublicApplyPage />} />
@@ -108,7 +103,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

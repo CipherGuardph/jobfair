@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Job Fair Queuing system</title>
+    <script>
+      window.addEventListener('error', () => {
+        document.body.innerHTML = `
+          <main style="min-height:100vh;display:grid;place-items:center;margin:0;padding:24px;background:linear-gradient(180deg,#0f172a 0%,#020617 100%);color:#e2e8f0;font-family:system-ui,sans-serif;">
+            <section style="max-width:720px;width:100%;border:1px solid rgba(148,163,184,.18);border-radius:24px;background:rgba(15,23,42,.9);padding:32px;box-shadow:0 24px 80px rgba(2,6,23,.45);">
+              <h1 style="margin:0 0 12px;font-size:clamp(2rem,5vw,3.4rem);line-height:1.02;">Job Fair Queuing system</h1>
+              <p style="margin:0 0 16px;color:#94a3b8;line-height:1.6;">This page loaded, but the app crashed during startup because Firebase env values are missing or invalid.</p>
+              <p style="margin:0 0 24px;color:#94a3b8;line-height:1.6;">Add your real <code>VITE_FIREBASE_*</code> values, rebuild, and the app will render normally.</p>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <a href="../index.html" style="display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:999px;background:#38bdf8;color:#fff;text-decoration:none;font-weight:700;">Back to home</a>
+                <a href="./dist/index.html" style="display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:999px;background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.24);color:#e2e8f0;text-decoration:none;font-weight:700;">Reload app</a>
+              </div>
+            </section>
+          </main>
+        `;
+      });
+      window.addEventListener('unhandledrejection', () => window.dispatchEvent(new Event('error')));
+    </script>
+    <script>
+      if (window.location.protocol === 'file:' && window.location.pathname.endsWith('/jobfair/index.html')) {
+        window.location.replace(new URL('./dist/index.html', window.location.href).href);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.jsx"></script>
+  </body>
+</html>

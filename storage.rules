@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && userDoc().data.role == "admin";
+    }
+
+    function isHr() {
+      return signedIn() && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && userDoc().data.role == "hr";
+    }
+
+    match /jobFairs/{jobFairId}/applicants/{applicantId}/resume/{fileName} {
+      allow read: if signedIn() && (isAdmin() || isHr());
+      allow write: if request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('application/pdf|application/msword|application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        && request.auth == null
+        && firestore.exists(/databases/(default)/documents/jobFairs/$(jobFairId))
+        && firestore.get(/databases/(default)/documents/jobFairs/$(jobFairId)).data.isSubmissionOpen == true
+        && firestore.get(/databases/(default)/documents/jobFairs/$(jobFairId)).data.startAt <= request.time
+        && firestore.get(/databases/(default)/documents/jobFairs/$(jobFairId)).data.endAt >= request.time;
+    }
+  }
+}

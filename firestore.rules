@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc().data.role == "admin";
+    }
+
+    function isHr() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc().data.role == "hr";
+    }
+
+    function canManageJobFair(data) {
+      return isAdmin() || (isHr() && (data.createdBy == request.auth.uid || request.auth.uid in data.assignedRecruiters));
+    }
+
+    function isPublicJobFair(data) {
+      return data.isSubmissionOpen == true
+        && data.startAt <= request.time
+        && data.endAt >= request.time;
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn() && request.auth.uid == userId
+        && request.resource.data.role == "hr";
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow update: if signedIn() && (
+        request.auth.uid == userId
+          ? request.resource.data.role == resource.data.role
+          : isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /publicJobFairs/{slug} {
+      allow read: if resource != null;
+      allow write: if isAdmin() || isHr();
+    }
+
+    match /jobFairs/{jobFairId} {
+      allow read: if canManageJobFair(resource.data);
+      allow create: if signedIn() && (isAdmin() || isHr()) && request.resource.data.createdBy == request.auth.uid;
+      allow update: if canManageJobFair(resource.data);
+      allow delete: if isAdmin();
+
+      match /applicants/{applicantId} {
+        allow read: if canManageJobFair(get(/databases/$(database)/documents/jobFairs/$(jobFairId)).data);
+        allow write: if canManageJobFair(get(/databases/$(database)/documents/jobFairs/$(jobFairId)).data);
+
+        match /internalComments/{commentId} {
+          allow read, write: if canManageJobFair(get(/databases/$(database)/documents/jobFairs/$(jobFairId)).data);
+        }
+      }
+
+      match /auditLogs/{logId} {
+        allow read: if canManageJobFair(get(/databases/$(database)/documents/jobFairs/$(jobFairId)).data);
+        allow write: if canManageJobFair(get(/databases/$(database)/documents/jobFairs/$(jobFairId)).data);
+      }
+
+      match /notificationQueue/{notificationId} {
+        allow read, write: if canManageJobFair(get(/databases/$(database)/documents/jobFairs/$(jobFairId)).data);
+      }
+    }
+  }
+}

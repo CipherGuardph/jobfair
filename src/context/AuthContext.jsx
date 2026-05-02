@@ -45,7 +45,41 @@ export function AuthProvider({ children }) {
       return () => {};
     }
 
+    const timeout = window.setTimeout(() => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      void ensureUserDoc(currentUser, {
+        displayName: currentUser.displayName || '',
+        email: currentUser.email || '',
+        companyName: ''
+      })
+        .then((ensured) => {
+          setUser(currentUser);
+          setProfile(ensured);
+        })
+        .catch(() => {
+          setUser(currentUser);
+          setProfile({
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || '',
+            email: currentUser.email || '',
+            role: 'hr',
+            companyName: ''
+          });
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }, 4000);
+
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
+      window.clearTimeout(timeout);
       setUser(authUser);
       if (!authUser) {
         setProfile(null);
@@ -53,13 +87,37 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      const ref = doc(db, 'users', authUser.uid);
-      const snap = await getDoc(ref);
-      setProfile(snap.exists() ? snap.data() : null);
-      setLoading(false);
+      try {
+        const ref = doc(db, 'users', authUser.uid);
+        const snap = await getDoc(ref);
+
+        if (snap.exists()) {
+          setProfile(snap.data());
+        } else {
+          const ensured = await ensureUserDoc(authUser, {
+            displayName: authUser.displayName || '',
+            email: authUser.email || '',
+            companyName: ''
+          });
+          setProfile(ensured);
+        }
+      } catch (error) {
+        setProfile({
+          uid: authUser.uid,
+          displayName: authUser.displayName || '',
+          email: authUser.email || '',
+          role: 'hr',
+          companyName: ''
+        });
+      } finally {
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      window.clearTimeout(timeout);
+      unsubscribe();
+    };
   }, []);
 
   const value = useMemo(() => ({

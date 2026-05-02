@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { buildPublicLink, buildQueueLink, generateQr, getApplicants, getJobFairById, getRecentAuditLogs, updateJobFairSubmissionState } from '../services/jobFairService';
 import { useAuth } from '../hooks/useAuth';
 import { formatDateTime } from '../utils/validators';
@@ -8,21 +8,43 @@ import { StatusBadge } from '../components/StatusBadge';
 
 export function JobFairDetailPage() {
   const { jobFairId } = useParams();
+  const location = useLocation();
   const { user, profile } = useAuth();
-  const [jobFair, setJobFair] = useState(null);
+  const [jobFair, setJobFair] = useState(location.state?.jobFair || null);
   const [applicants, setApplicants] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('info');
+  const [error, setError] = useState('');
 
   const load = async () => {
-    const data = await getJobFairById(jobFairId);
-    setJobFair(data);
-    if (data?.publicSlug) {
-      setQrDataUrl(await generateQr(data.publicSlug));
+    setError('');
+    try {
+      const data = await getJobFairById(jobFairId);
+      if (!data) {
+        setJobFair(null);
+        setError('Job fair not found.');
+        return;
+      }
+
+      setJobFair(data);
+      if (data?.publicSlug) {
+        setQrDataUrl(await generateQr(data.publicSlug));
+      }
+      setApplicants(await getApplicants(jobFairId));
+      setAuditLogs(await getRecentAuditLogs(jobFairId, 8));
+    } catch (loadError) {
+      setApplicants([]);
+      setAuditLogs([]);
+      setQrDataUrl('');
+      if (!jobFair) {
+        setJobFair(null);
+        setError(loadError?.message || 'Unable to load job fair.');
+      } else {
+        setError(loadError?.message || 'Unable to refresh job fair from Firestore.');
+      }
     }
-    setApplicants(await getApplicants(jobFairId));
-    setAuditLogs(await getRecentAuditLogs(jobFairId, 8));
   };
 
   useEffect(() => {
@@ -54,7 +76,7 @@ export function JobFairDetailPage() {
   }, [applicants]);
 
   if (!jobFair) {
-    return <div className="card card-dark card-pad">Loading job fair...</div>;
+    return <div className="card card-dark card-pad">{error ? `Unable to load job fair: ${error}` : 'Loading job fair...'}</div>;
   }
 
   const publicLink = buildPublicLink(jobFair.publicSlug);
@@ -63,12 +85,37 @@ export function JobFairDetailPage() {
   const handleToggle = async () => {
     await updateJobFairSubmissionState(jobFairId, !jobFair.isSubmissionOpen, profile?.displayName || user.email, user.uid);
     setMessage(`Submissions ${jobFair.isSubmissionOpen ? 'closed' : 'opened'}.`);
+    setMessageType('info');
     await load();
   };
 
   const handleCopy = async (value) => {
-    await navigator.clipboard.writeText(value);
-    setMessage('Copied to clipboard.');
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = value;
+        temp.setAttribute('readonly', 'true');
+        temp.style.position = 'fixed';
+        temp.style.left = '-9999px';
+        temp.style.top = '0';
+        document.body.appendChild(temp);
+        temp.focus();
+        temp.select();
+        const copied = document.execCommand('copy');
+        document.body.removeChild(temp);
+        if (!copied) {
+          throw new Error('Copy failed');
+        }
+      }
+      setMessage('Copied to clipboard.');
+      setMessageType('info');
+    } catch (copyError) {
+      console.error('Clipboard copy failed', copyError);
+      setMessage('Copy failed. Please copy the link manually.');
+      setMessageType('error');
+    }
   };
 
   const handleDownloadQr = () => {
@@ -93,7 +140,7 @@ export function JobFairDetailPage() {
         </div>
       </div>
 
-      {message ? <div className="message message-success">{message}</div> : null}
+      {message ? <div className={`message message-${messageType}`}>{message}</div> : null}
 
       <div className="grid-2">
         <div className="card card-dark card-pad stack">

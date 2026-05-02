@@ -13,13 +13,22 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { functions } from './firebase';
+import { httpsCallable } from 'firebase/functions';
 import { createQrCodeDataUrl } from '../utils/qrCode';
 import { slugify } from '../utils/validators';
+
+function requireDb() {
+  if (!db) {
+    throw new Error('Firestore is not available. Check your Firebase configuration.');
+  }
+}
 
 function buildPublicDoc(jobFairId, data) {
   return {
     jobFairId,
     publicSlug: data.publicSlug,
+    createdBy: data.createdBy || '',
     companyName: data.companyName,
     title: data.title,
     venue: data.venue,
@@ -45,6 +54,7 @@ function buildPublicDoc(jobFairId, data) {
 }
 
 export async function createJobFair({ ownerUid, ...payload }) {
+  requireDb();
   const jobFairRef = doc(collection(db, 'jobFairs'));
   const slugBase = slugify(`${payload.companyName || payload.title || 'job-fair'}-${jobFairRef.id.slice(0, 6)}`);
   const publicSlug = slugBase || `job-fair-${jobFairRef.id.slice(0, 6)}`;
@@ -67,7 +77,7 @@ export async function createJobFair({ ownerUid, ...payload }) {
 
   const batch = writeBatch(db);
   batch.set(jobFairRef, data);
-  batch.set(doc(db, 'publicJobFairs', publicSlug), buildPublicDoc(jobFairRef.id, { ...payload, publicSlug }));
+  batch.set(doc(db, 'publicJobFairs', publicSlug), buildPublicDoc(jobFairRef.id, { ...payload, publicSlug, createdBy: ownerUid }));
   await batch.commit();
 
   return {
@@ -78,33 +88,63 @@ export async function createJobFair({ ownerUid, ...payload }) {
   };
 }
 
+export async function createJobFairViaFunction(payload) {
+  if (!functions) {
+    throw new Error('Firebase Functions is not available. Check your Firebase configuration.');
+  }
+  const fn = httpsCallable(functions, 'createJobFair');
+  const result = await fn(payload);
+  return result.data;
+}
+
 export async function getAccessibleJobFairs(uid, role) {
+  requireDb();
   if (!uid) return [];
   if (role === 'admin') {
     const snap = await getDocs(collection(db, 'jobFairs'));
     return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
   }
 
-  const createdSnap = await getDocs(query(collection(db, 'jobFairs'), where('createdBy', '==', uid)));
-  const assignedSnap = await getDocs(query(collection(db, 'jobFairs'), where('assignedRecruiters', 'array-contains', uid)));
   const map = new Map();
-  [...createdSnap.docs, ...assignedSnap.docs].forEach((docSnap) => {
-    map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
-  });
+  try {
+    const createdSnap = await getDocs(query(collection(db, 'jobFairs'), where('createdBy', '==', uid)));
+    createdSnap.docs.forEach((docSnap) => {
+      map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+    });
+  } catch (createdError) {
+    if ((createdError?.code || '') !== 'permission-denied') {
+      throw createdError;
+    }
+  }
+
+  try {
+    const assignedSnap = await getDocs(query(collection(db, 'jobFairs'), where('assignedRecruiters', 'array-contains', uid)));
+    assignedSnap.docs.forEach((docSnap) => {
+      map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+    });
+  } catch (assignedError) {
+    if ((assignedError?.code || '') !== 'permission-denied') {
+      throw assignedError;
+    }
+  }
+
   return [...map.values()].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 }
 
 export async function getJobFairById(jobFairId) {
+  requireDb();
   const snap = await getDoc(doc(db, 'jobFairs', jobFairId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function getPublicJobFairBySlug(publicSlug) {
+  requireDb();
   const snap = await getDoc(doc(db, 'publicJobFairs', publicSlug));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function updateJobFairSubmissionState(jobFairId, isSubmissionOpen, actorName, actorId) {
+  requireDb();
   const ref = doc(db, 'jobFairs', jobFairId);
   const snap = await getDoc(ref);
   const current = snap.data();
@@ -131,21 +171,25 @@ export async function updateJobFairSubmissionState(jobFairId, isSubmissionOpen, 
 }
 
 export async function getApplicants(jobFairId) {
+  requireDb();
   const snap = await getDocs(query(collection(db, 'jobFairs', jobFairId, 'applicants'), orderBy('queueIndex', 'asc')));
   return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 }
 
 export async function getRecentAuditLogs(jobFairId, count = 10) {
+  requireDb();
   const snap = await getDocs(query(collection(db, 'jobFairs', jobFairId, 'auditLogs'), orderBy('createdAt', 'desc'), limit(count)));
   return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 }
 
 export async function getApplicantInternalComments(jobFairId, applicantId) {
+  requireDb();
   const snap = await getDocs(query(collection(db, 'jobFairs', jobFairId, 'applicants', applicantId, 'internalComments'), orderBy('createdAt', 'asc')));
   return snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 }
 
 export async function getApplicantTimeline(jobFairId, applicantId) {
+  requireDb();
   const [auditLogs, comments] = await Promise.all([
     getDocs(query(collection(db, 'jobFairs', jobFairId, 'auditLogs'), orderBy('createdAt', 'asc'))),
     getDocs(query(collection(db, 'jobFairs', jobFairId, 'applicants', applicantId, 'internalComments'), orderBy('createdAt', 'asc')))
@@ -164,6 +208,7 @@ export async function getApplicantTimeline(jobFairId, applicantId) {
 }
 
 export async function addApplicantInternalComment(jobFairId, applicantId, payload) {
+  requireDb();
   return addDoc(collection(db, 'jobFairs', jobFairId, 'applicants', applicantId, 'internalComments'), {
     ...payload,
     createdAt: serverTimestamp()
@@ -171,11 +216,13 @@ export async function addApplicantInternalComment(jobFairId, applicantId, payloa
 }
 
 export async function getApplicant(jobFairId, applicantId) {
+  requireDb();
   const snap = await getDoc(doc(db, 'jobFairs', jobFairId, 'applicants', applicantId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function updateApplicantDirect(jobFairId, applicantId, payload) {
+  requireDb();
   await updateDoc(doc(db, 'jobFairs', jobFairId, 'applicants', applicantId), {
     ...payload,
     updatedAt: serverTimestamp()

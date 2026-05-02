@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { addApplicantInternalComment, getApplicant, getApplicantTimeline, getJobFairById } from '../services/jobFairService';
-import { refreshApplicantAnalysis, updateApplicantStatus } from '../services/applicantService';
+import { getApplicant, getApplicantTimeline, getJobFairById } from '../services/jobFairService';
+import { addApplicantInternalComment, refreshApplicantAnalysis, updateApplicantStatus } from '../services/applicantService';
 import { StatusBadge } from '../components/StatusBadge';
 import { MatchBadge } from '../components/MatchBadge';
 import { formatDateTime } from '../utils/validators';
@@ -144,9 +144,9 @@ export function ApplicantDetailPage() {
 
   const addComment = async () => {
     if (!commentForm.comment.trim()) return;
-    await addApplicantInternalComment(jobFairId, applicantId, {
-      actorId: user?.uid,
-      actorName: profile?.displayName || user?.email || 'HR',
+    await addApplicantInternalComment({
+      jobFairId,
+      applicantId,
       comment: commentForm.comment.trim(),
       taggedRecruiterName: commentForm.taggedRecruiterName.trim()
     });
@@ -420,7 +420,7 @@ export function ApplicantDetailPage() {
           {timeline.map((item) => (
             <div key={item.id} className="muted-box">
               <strong>{timelineLabel(item)}</strong>
-              <div className="muted">{formatDateTime(item.createdAt)} · {item.actorName || 'System'}</div>
+              <div className="muted">{formatDateTime(item.createdAt)} ï¿½ {item.actorName || 'System'}</div>
               {item.source === 'comment' ? (
                 <div className="muted">{item.comment}</div>
               ) : (

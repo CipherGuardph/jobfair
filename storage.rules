@@ -18,8 +18,22 @@ service firebase.storage {
       return signedIn() && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && userDoc().data.role == "hr";
     }
 
+    function canManageJobFair(jobFairId) {
+      return firestore.exists(/databases/(default)/documents/jobFairs/$(jobFairId))
+        && (
+          isAdmin()
+          || (
+            isHr()
+            && (
+              firestore.get(/databases/(default)/documents/jobFairs/$(jobFairId)).data.createdBy == request.auth.uid
+              || request.auth.uid in firestore.get(/databases/(default)/documents/jobFairs/$(jobFairId)).data.assignedRecruiters
+            )
+          )
+        );
+    }
+
     match /jobFairs/{jobFairId}/applicants/{applicantId}/resume/{fileName} {
-      allow read: if signedIn() && (isAdmin() || isHr());
+      allow read: if signedIn() && canManageJobFair(jobFairId);
       allow write: if request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('application/pdf|application/msword|application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         && request.auth == null

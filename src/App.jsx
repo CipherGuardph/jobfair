@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './components/AppShell';
 const LandingPage = lazy(() => import('./pages/LandingPage').then((module) => ({ default: module.LandingPage })));
@@ -17,17 +16,6 @@ const PublicApplyPage = lazy(() => import('./pages/PublicApplyPage').then((modul
 const QueueDisplayPage = lazy(() => import('./pages/QueueDisplayPage').then((module) => ({ default: module.QueueDisplayPage })));
 
 export default function App() {
-  const { loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="app-loading">
-        <div className="spinner" />
-        <p>Loading secure workspace...</p>
-      </div>
-    );
-  }
-
   return (
     <Suspense
       fallback={

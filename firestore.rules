@@ -19,7 +19,11 @@ service cloud.firestore {
     }
 
     function canManageJobFair(data) {
-      return isAdmin() || (isHr() && (data.createdBy == request.auth.uid || request.auth.uid in data.assignedRecruiters));
+      return signedIn() && (
+        isAdmin()
+        || data.createdBy == request.auth.uid
+        || (isHr() && (data.createdBy == request.auth.uid || request.auth.uid in data.assignedRecruiters))
+      );
     }
 
     function isPublicJobFair(data) {
@@ -42,13 +46,19 @@ service cloud.firestore {
 
     match /publicJobFairs/{slug} {
       allow read: if resource != null;
-      allow write: if isAdmin() || isHr();
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && (
+        isAdmin()
+        || isHr()
+        || resource.data.createdBy == request.auth.uid
+      );
+      allow delete: if isAdmin();
     }
 
     match /jobFairs/{jobFairId} {
       allow read: if canManageJobFair(resource.data);
-      allow create: if signedIn() && (isAdmin() || isHr()) && request.resource.data.createdBy == request.auth.uid;
-      allow update: if canManageJobFair(resource.data);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if canManageJobFair(resource.data) || resource.data.createdBy == request.auth.uid;
       allow delete: if isAdmin();
 
       match /applicants/{applicantId} {

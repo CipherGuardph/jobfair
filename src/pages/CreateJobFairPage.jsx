@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { createJobFair } from '../services/jobFairService';
+import { createJobFair, createJobFairViaFunction } from '../services/jobFairService';
 import { dateToInputValue, nowLocalIso } from '../utils/dateHelpers';
 import { isValidEmail } from '../utils/validators';
 
@@ -54,6 +54,14 @@ export function CreateJobFairPage() {
     setError('');
     setMessage('');
 
+    if (!user) {
+      setError('Please sign in first.');
+      return;
+    }
+    if (!profile || !['admin', 'hr'].includes(profile.role)) {
+      setError('Your account is not ready for job fair creation yet. Please reload after your profile finishes syncing.');
+      return;
+    }
     if (!form.positions.length) {
       setError('Add at least one position.');
       return;
@@ -69,8 +77,7 @@ export function CreateJobFairPage() {
 
     setLoading(true);
     try {
-      const result = await createJobFair({
-        ownerUid: user.uid,
+      const payload = {
         companyName: form.companyName,
         title: form.title,
         venue: form.venue,
@@ -84,11 +91,49 @@ export function CreateJobFairPage() {
         bannerUrl: form.bannerUrl,
         positions: form.positions.filter((item) => item.title.trim()),
         checklistTemplate: form.checklistTemplate.filter((item) => item.label.trim())
-      });
+      };
+
+      let result;
+      try {
+        result = await createJobFair({ ownerUid: user.uid, ...payload });
+      } catch (directError) {
+        const directCode = directError?.code || '';
+        if (!['unavailable', 'not-found'].includes(directCode)) {
+          throw directError;
+        }
+
+        result = await createJobFairViaFunction(payload);
+      }
+
       setMessage('Job fair created successfully.');
-      navigate(`/jobfairs/${result.id}`);
+      navigate(`/jobfairs/${result.id}`, {
+        state: {
+          jobFair: {
+            id: result.id,
+            publicSlug: result.publicSlug,
+            companyName: form.companyName,
+            title: form.title,
+            venue: form.venue,
+            description: form.description,
+            startAt: new Date(form.startAt),
+            endAt: new Date(form.endAt),
+            isSubmissionOpen: form.isSubmissionOpen,
+            contactPerson: form.contactPerson,
+            contactEmail: form.contactEmail,
+            contactPhone: form.contactPhone,
+            bannerUrl: form.bannerUrl,
+            positions: form.positions.filter((item) => item.title.trim()),
+            checklistTemplate: form.checklistTemplate.filter((item) => item.label.trim()),
+            createdBy: user.uid
+          }
+        }
+      });
     } catch (err) {
-      setError(err.message || 'Unable to create job fair.');
+      const defaultMessage = err?.code === 'permission-denied'
+        ? 'You do not have permission to create a job fair.'
+        : 'Unable to create job fair.';
+      const messageText = err?.message ? `${err.code || 'error'}: ${err.message}` : defaultMessage;
+      setError(messageText.replace(/^error:\s*/i, ''));
     } finally {
       setLoading(false);
     }

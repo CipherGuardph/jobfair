@@ -5,10 +5,6 @@ import { getAccessibleJobFairs, getApplicants } from '../services/jobFairService
 import { formatDateTime } from '../utils/validators';
 import { StatusBadge } from '../components/StatusBadge';
 
-function countStatus(applicants, status) {
-  return applicants.filter((applicant) => applicant.status === status).length;
-}
-
 export function DashboardPage() {
   const { user, profile } = useAuth();
   const [jobFairs, setJobFairs] = useState([]);
@@ -19,7 +15,10 @@ export function DashboardPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      if (!user) return;
+      if (!user) {
+        if (active) setLoading(false);
+        return;
+      }
       try {
         const data = await getAccessibleJobFairs(user.uid, profile?.role || 'hr');
         if (active) setJobFairs(data);
@@ -42,9 +41,27 @@ export function DashboardPage() {
         if (active) setApplicants([]);
         return;
       }
-      const rows = await Promise.all(jobFairs.map((jobFair) => getApplicants(jobFair.id).then((items) => items.map((item) => ({ ...item, jobFairId: jobFair.id })))));
-      if (active) {
-        setApplicants(rows.flat());
+      try {
+        const rows = await Promise.all(
+          jobFairs.map(async (jobFair) => {
+            try {
+              const items = await getApplicants(jobFair.id);
+              return items.map((item) => ({ ...item, jobFairId: jobFair.id }));
+            } catch (applicantError) {
+              if ((applicantError?.code || '') !== 'permission-denied') {
+                throw applicantError;
+              }
+              return [];
+            }
+          })
+        );
+        if (active) {
+          setApplicants(rows.flat());
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message || 'Unable to load applicant counts.');
+        }
       }
     };
     loadApplicantCounts();
@@ -71,8 +88,7 @@ export function DashboardPage() {
     interviewsToday: applicants.filter((applicant) => String(applicant.interviewDate || '') === today).length,
     pendingRequirements: applicants.filter((applicant) => applicant.status === 'Pending Requirements').length,
     highMatch: applicants.filter((applicant) => Number(applicant.matchScore || 0) >= 80).length,
-    completed: applicants.filter((applicant) => applicant.status === 'Completed').length,
-    needingReview: applicants.filter((applicant) => (applicant.parsedResume?.parserStatus || applicant.parserStatus) === 'failed' || applicant.matchScore === null || applicant.matchScore === undefined || applicant.matchScore === '').length
+    completed: applicants.filter((applicant) => applicant.status === 'Completed').length
   };
 
   return (
@@ -87,26 +103,6 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat"><div className="muted">Job fairs</div><div className="value">{stats.totalJobFairs}</div></div>
-        <div className="stat"><div className="muted">Active</div><div className="value">{stats.activeJobFairs}</div></div>
-        <div className="stat"><div className="muted">Applicants</div><div className="value">{stats.totalApplicants}</div></div>
-        <div className="stat"><div className="muted">Passed</div><div className="value">{stats.passed}</div></div>
-      </div>
-
-      <div className="grid-3">
-        <div className="stat"><div className="muted">Interviews today</div><div className="value">{dashboardCards.interviewsToday}</div></div>
-        <div className="stat"><div className="muted">Pending requirements</div><div className="value">{dashboardCards.pendingRequirements}</div></div>
-        <div className="stat"><div className="muted">High match candidates</div><div className="value">{dashboardCards.highMatch}</div></div>
-        <div className="stat"><div className="muted">Completed applicants</div><div className="value">{dashboardCards.completed}</div></div>
-        <div className="stat"><div className="muted">Applicants needing review</div><div className="value">{dashboardCards.needingReview}</div></div>
-      </div>
-
-      <div className="hero-panel">
-        <strong>Pending review</strong>
-        <div className="muted">Applicants needing screening or interview follow-up: {stats.pending}</div>
-      </div>
-
       {error ? <div className="message message-error">{error}</div> : null}
       {loading ? (
         <div className="card card-dark card-pad">Loading your job fairs...</div>
@@ -117,26 +113,41 @@ export function DashboardPage() {
           <Link className="btn btn-primary" to="/jobfairs/new">Create job fair</Link>
         </div>
       ) : (
-        <div className="grid-2">
-          {jobFairs.map((jobFair) => (
-            <article className="card card-dark jobfair-card" key={jobFair.id}>
-              <div className="toolbar" style={{ justifyContent: 'space-between' }}>
-                <StatusBadge value={jobFair.isSubmissionOpen ? 'open' : 'closed'} />
-                <span className="badge badge-neutral">{jobFair.totalApplicants || 0} applicants</span>
-              </div>
-              <h3>{jobFair.companyName}</h3>
-              <h2>{jobFair.title}</h2>
-              <p className="muted">{jobFair.venue}</p>
-              <p className="muted">
-                {formatDateTime(jobFair.startAt)} - {formatDateTime(jobFair.endAt)}
-              </p>
-              <div className="row-actions">
-                <Link className="btn btn-secondary btn-small" to={`/jobfairs/${jobFair.id}`}>View details</Link>
-                <Link className="btn btn-ghost btn-small" to={`/jobfairs/${jobFair.id}/applicants`}>Manage applicants</Link>
-              </div>
-              <small className="muted">Public link: /apply/{jobFair.publicSlug}</small>
-            </article>
-          ))}
+        <div className="table-wrap">
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Title</th>
+                <th>Venue</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Applicants</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobFairs.map((jobFair) => (
+                <tr key={jobFair.id}>
+                  <td>
+                    <strong>{jobFair.companyName}</strong>
+                    <div className="muted" style={{ fontSize: '0.9rem' }}>/{jobFair.publicSlug}</div>
+                  </td>
+                  <td>{jobFair.title}</td>
+                  <td>{jobFair.venue}</td>
+                  <td>{formatDateTime(jobFair.startAt)} - {formatDateTime(jobFair.endAt)}</td>
+                  <td><StatusBadge value={jobFair.isSubmissionOpen ? 'open' : 'closed'} /></td>
+                  <td>{jobFair.totalApplicants || 0}</td>
+                  <td>
+                    <div className="row-actions">
+                      <Link className="btn btn-secondary btn-small" to={`/jobfairs/${jobFair.id}`}>Open</Link>
+                      <Link className="btn btn-ghost btn-small" to={`/jobfairs/${jobFair.id}/applicants`}>Applicants</Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

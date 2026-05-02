@@ -169,7 +169,7 @@ export function ApplicantsPage() {
       <div className="topbar">
         <div>
           <h1 className="page-title">Applicants</h1>
-          <p className="muted">{jobFair?.title || 'Job fair'} · searchable applicant table</p>
+          <p className="muted">{jobFair?.title || 'Job fair'} searchable applicant table</p>
         </div>
         <div className="toolbar">
           <button className="btn btn-secondary" onClick={handleExport}>Export CSV</button>
@@ -256,8 +256,8 @@ export function ApplicantsPage() {
         </div>
       </div>
 
-      <div className="table-wrap">
-        <table>
+      <div className="table-wrap applicants-table-wrap">
+        <table className="applicants-table">
           <thead>
             <tr>
               <th>Queue #</th>

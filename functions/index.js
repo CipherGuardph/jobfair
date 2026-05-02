@@ -219,6 +219,35 @@ function buildTimelineLabel(item) {
   }
 }
 
+function buildPublicDoc(jobFairId, data) {
+  return {
+    jobFairId,
+    publicSlug: data.publicSlug,
+    createdBy: data.createdBy || '',
+    companyName: data.companyName,
+    title: data.title,
+    venue: data.venue,
+    description: data.description,
+    startAt: data.startAt,
+    endAt: data.endAt,
+    isSubmissionOpen: data.isSubmissionOpen,
+    contactPerson: data.contactPerson,
+    contactEmail: data.contactEmail,
+    contactPhone: data.contactPhone,
+    positions: data.positions,
+    checklistTemplate: data.checklistTemplate,
+    bannerUrl: data.bannerUrl || '',
+    queueCounter: 0,
+    currentServingQueueNumber: null,
+    nowServingApplicants: [],
+    nextApplicants: [],
+    waitingCount: 0,
+    completedCount: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+}
+
 async function enqueueNotification(transaction, jobFairRef, payload) {
   const ref = jobFairRef.collection('notificationQueue').doc();
   transaction.set(ref, payload);
@@ -763,6 +792,88 @@ exports.createApplicantSubmission = onCall({ enforceAppCheck: false }, async (re
   return {
     applicantId: applicantRef.id,
     queueNumber
+  };
+});
+
+exports.createJobFair = onCall({ enforceAppCheck: false }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Please sign in.');
+  }
+
+  const {
+    companyName = '',
+    title = '',
+    venue = '',
+    description = '',
+    startAt,
+    endAt,
+    isSubmissionOpen = true,
+    contactPerson = '',
+    contactEmail = '',
+    contactPhone = '',
+    bannerUrl = '',
+    positions = [],
+    checklistTemplate = []
+  } = request.data || {};
+
+  if (!companyName || !title || !venue || !startAt || !endAt || !contactEmail) {
+    throw new HttpsError('invalid-argument', 'Missing job fair fields.');
+  }
+
+  const userRole = await getUserRole(request.auth.uid);
+  if (!userRole || !['admin', 'hr'].includes(userRole)) {
+    throw new HttpsError('permission-denied', 'You do not have access to create job fairs.');
+  }
+
+  const jobFairRef = db.collection('jobFairs').doc();
+  const slugBase = `${String(companyName || title || 'job-fair').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${jobFairRef.id.slice(0, 6)}`;
+  const publicSlug = slugBase || `job-fair-${jobFairRef.id.slice(0, 6)}`;
+
+  const data = {
+    id: jobFairRef.id,
+    companyName,
+    title,
+    venue,
+    description,
+    startAt,
+    endAt,
+    isSubmissionOpen,
+    publicSlug,
+    createdBy: request.auth.uid,
+    assignedRecruiters: [request.auth.uid],
+    positions,
+    checklistTemplate,
+    queueCounter: 0,
+    totalApplicants: 0,
+    totalPassed: 0,
+    totalFailed: 0,
+    totalCompleted: 0,
+    contactPerson,
+    contactEmail,
+    contactPhone,
+    bannerUrl,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  await jobFairRef.set(data);
+  await db.doc(`publicJobFairs/${publicSlug}`).set(buildPublicDoc(jobFairRef.id, { ...data, publicSlug, createdBy: request.auth.uid }));
+  await jobFairRef.collection('auditLogs').add({
+    actorId: request.auth.uid,
+    actorName: request.auth.token.name || request.auth.token.email || request.auth.uid,
+    action: 'jobfair_created',
+    targetType: 'jobFair',
+    targetId: jobFairRef.id,
+    previousValue: null,
+    newValue: { publicSlug, title, companyName },
+    createdAt: serverTimestamp()
+  });
+
+  return {
+    id: jobFairRef.id,
+    publicSlug,
+    publicApplyUrl: `/apply/${publicSlug}`,
+    queueUrl: `/queue/${publicSlug}`
   };
 });
 

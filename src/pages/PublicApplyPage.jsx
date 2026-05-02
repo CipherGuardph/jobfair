@@ -86,6 +86,10 @@ export function PublicApplyPage() {
     event.preventDefault();
     setError('');
 
+    if (!storage || !functions) {
+      setError('Application services are not available yet. Please try again in a moment.');
+      return;
+    }
     if (!canApply) {
       setError(statusMessage || 'Submissions are closed.');
       return;
@@ -147,13 +151,13 @@ export function PublicApplyPage() {
 
   if (confirmation) {
     return (
-      <div className="auth-shell" style={{ gridTemplateColumns: '1fr' }}>
-        <section className="auth-hero">
+      <div className="auth-shell apply-shell">
+        <section className="auth-hero apply-hero">
           <div className="brand">
             <div className="brand-mark" />
             <div>{jobFair?.title || 'Job fair'}</div>
           </div>
-          <div className="hero-panel">
+          <div className="hero-panel apply-hero-panel">
             <h1>Application submitted</h1>
             <p className="muted">Your queue number is:</p>
             <h2 style={{ fontSize: '3rem', margin: '0.2em 0' }}>{confirmation.queueNumber}</h2>
@@ -165,8 +169,8 @@ export function PublicApplyPage() {
   }
 
   return (
-    <div className="auth-shell" style={{ gridTemplateColumns: '1fr 1fr' }}>
-      <section className="auth-hero">
+    <div className="auth-shell apply-shell">
+      <section className="auth-hero apply-hero">
         <div className="brand">
           <div className="brand-mark" />
           <div>
@@ -179,13 +183,13 @@ export function PublicApplyPage() {
           <h1>{jobFair?.title || 'Application form'}</h1>
           <p>{jobFair?.description || 'Submit your details and resume securely from your phone.'}</p>
         </div>
-        <div className="hero-panel">
+        <div className="hero-panel apply-hero-panel">
           <div className="muted">Scan QR / open link</div>
           {qr ? <img src={qr} alt="QR code" width="180" height="180" /> : <div className="muted">Loading QR code...</div>}
         </div>
       </section>
-      <section className="auth-panel" style={{ alignItems: 'start' }}>
-        <form className="card card-pad auth-form applicant-form" onSubmit={handleSubmit}>
+      <section className="auth-panel apply-form-panel">
+        <form className="card card-pad auth-form applicant-form apply-form-card" onSubmit={handleSubmit}>
           <div className="stack">
             <h2 className="form-title">Applicant details</h2>
             {statusMessage ? <div className="message message-info">{statusMessage}</div> : null}

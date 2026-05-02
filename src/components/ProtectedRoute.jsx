@@ -6,7 +6,12 @@ export function ProtectedRoute({ children }) {
   const location = useLocation();
 
   if (loading) {
-    return null;
+    return (
+      <div className="app-loading">
+        <div className="spinner" />
+        <p>Loading dashboard...</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -15,4 +20,3 @@ export function ProtectedRoute({ children }) {
 
   return children;
 }
-
